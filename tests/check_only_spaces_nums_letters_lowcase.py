@@ -3,7 +3,7 @@
 import sys, getopt
 
 def printHelp():
-    print './only_spaces_nums_letters_lowcase.py -i'
+    print './check_only_spaces_nums_letters_lowcase.py -i <inputfile>'
 
 def onError(str, pos, ch):
     print 'Error: ', str, ', pos: ', pos, ', character: \'', ch, '\''
@@ -26,7 +26,7 @@ def run(inputfile):
             onError('Not digit or letter detected', i, ch)
         i += 1
     rFd.close()
-    print('Done')
+    print('Done, file is correct')
 
 def main(argv):
     inputfile = ''
