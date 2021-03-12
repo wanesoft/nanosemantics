@@ -33,3 +33,5 @@
 
 # IDEs
 .vscode/**
+**/cmake-build-debug/**
+**/.idea/**
