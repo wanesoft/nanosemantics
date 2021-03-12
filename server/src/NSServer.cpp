@@ -18,7 +18,7 @@ NSServer::NSServer(int numsThread) : _pool(numsThread) {
 NSServer::~NSServer() {
 
 }
-
+std::atomic<int> gCount{0};
 int NSServer::start(int port) {
     _general_sock = create_socket(port);
     if (_general_sock < 0) {
@@ -62,13 +62,14 @@ int NSServer::start(int port) {
                         } else if (resRecv == 0) {
                             std::clog << "Connection WR close case\n";
                         } else {
-                            _pool.enqueue_task([buf, resRecv, curClient](){
-                                std::vector<uint8_t> v(buf, buf + resRecv);
+                            std::vector<uint8_t> v(buf, buf + resRecv);
+                            _pool.enqueue_task([v, curClient](){
                                 std::clog << '\n';
                                 for (unsigned long i = 0; i < v.size(); ++i) {
                                     std::clog << v[i];
                                 }
                                 std::clog << '\n';
+                                gCount += v.size();
                                 send(curClient, "ok\n", 3, MSG_DONTWAIT);
                             });
                         }
@@ -83,25 +84,41 @@ int NSServer::start(int port) {
                             std::clog << "Connection X disconnect case: " << std::strerror(errno) << '\n';
                         } else if (resRecv == 0) {
                             needCompress = true;
-                            close(curClient);
+                            _pool.enqueue_task([curClient](){
+                                close(curClient);
+                            });
+                            pollArr[i].fd = -1;
+                            --curFdsCount;
                             std::clog << "Connection X WR close case\n";
                         } else {
-                            _pool.enqueue_task([buf, resRecv, curClient]() {
-                                std::vector<uint8_t> v(buf, buf + resRecv);
-                                std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
+                            std::vector<uint8_t> v(buf, buf + resRecv);
+                            _pool.enqueue_task([v, curClient]() {
+                                //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
                                 for (unsigned long i = 0; i < v.size(); ++i) {
-                                    std::clog << v[i];
+                                    //std::clog << v[i];
                                 }
-                                std::clog << '\n';
+                                using namespace std::chrono;
+                                std::this_thread::sleep_for(10ms);
+                                //std::clog << '\n';
+                                gCount += v.size();
                                 send(curClient, "ok\n", 3, MSG_DONTWAIT);
                             });
                         }
                     }
                 }
             }
-
         }
-        std::clog << "Cycle, curFdsCount: " << curFdsCount << '\n';
+        if (needCompress) {
+            std::sort(pollArr.begin(), pollArr.end(), [](pollfd &l, pollfd &r) {
+                return l.fd > r.fd;
+            });
+            needCompress = false;
+        }
+        std::clog << "Cycle, curFdsCount: " << curFdsCount << ", and gCheck " << gCount <<'\n';
+        for (int i = 0; i < 1024; ++i) {
+            //std::clog << pollArr[i].fd << ' ';
+        }
+        std::clog << '\n';
     }
 
     return 0;
