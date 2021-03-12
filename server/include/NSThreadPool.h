@@ -14,19 +14,20 @@
 
 class NSThreadPool {
 public:
-    using UniqueFunction = std::packaged_task<void()>;
+    using Task = std::function<void()>;
 
     NSThreadPool() = delete;
     explicit NSThreadPool(int numsThread);
     ~NSThreadPool();
 
-    void enqueue_task(UniqueFunction task);
+    void enqueue_task(Task &&task);
+    void stop();
 
 private:
     struct {
         std::mutex mtx;
-        std::queue<UniqueFunction> work_queue;
-        bool aborting = false;
+        std::queue<Task> work_queue;
+        std::atomic_bool aborting{false};
     } _state;
     std::vector<std::thread> _workers;
     std::condition_variable _cv;
