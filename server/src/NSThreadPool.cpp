@@ -16,15 +16,13 @@ NSThreadPool::NSThreadPool(int numsThread) {
 
 NSThreadPool::~NSThreadPool() {
     while (true) {
-        {
-            std::lock_guard<std::mutex> lk(_state.mtx);
-            if (_state.work_queue.empty() || _state.aborting) {
-                break;
-            } else {
-                using namespace std::chrono;
-                _state.mtx.unlock();
-                std::this_thread::sleep_for(100ms);
-            }
+        std::lock_guard<std::mutex> lk(_state.mtx);
+        if (_state.work_queue.empty() || _state.aborting) {
+            break;
+        } else {
+            using namespace std::chrono;
+            _state.mtx.unlock();
+            std::this_thread::sleep_for(100ms);
         }
     }
 

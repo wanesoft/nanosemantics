@@ -7,14 +7,22 @@
 
 #include <NSThreadPool.h>
 
+
 class NSServer {
 public:
     NSServer() = delete;
     explicit NSServer(int numsThread);
     ~NSServer();
 
+    int start(int port);
+    void stop();
+
 private:
+    int create_socket(int port);
+
     NSThreadPool _pool;
+    int _general_sock = -1;
+    bool _run = true;
 };
 
 
