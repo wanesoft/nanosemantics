@@ -15,8 +15,34 @@ static constexpr int BUFSIZE = 1024;
 
 // todo delete
 std::atomic<int> gCount{0};
+std::mutex gPrintMtx;
 
-NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads, this) {
+static void logStrFormat(const char *fmt, ...) {
+    std::lock_guard<std::mutex> lk(gPrintMtx);
+    int r;
+    std::string s;
+    va_list va;
+
+    va_start(va, fmt);
+    r = vsnprintf(NULL, 0, fmt, va);
+    va_end(va);
+    if (r < 0) {
+        assert(0);
+    }
+    s.resize(r + 1);
+
+    va_start(va, fmt);
+    r = vsnprintf(&s[0], s.capacity(), fmt, va);
+    va_end(va);
+    if (r < 0) {
+        assert(0);
+    }
+    s.resize(r);
+
+    std::clog << s << '\n';
+}
+
+NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {
     _pollVec.reserve(params.maxConnections);
     _activeConnections = 0;
     for (int i = 0; i < _params.maxConnections; ++i) {
@@ -74,7 +100,7 @@ int NSServer::start() {
                 }
             }
         }
-        std::clog << "Cycle, curFdsCount: " << _activeConnections << ", and gCheck " << gCount <<'\n';
+        logStrFormat("Cycle, curFdsCount: %d and gCheck %d", _activeConnections, gCount.load());
         for (int i = 0; i < 1024; ++i) {
             //std::clog << pollArr[i].fd << ' ';
         }
@@ -94,14 +120,16 @@ void NSServer::on_start_task(int fd) {
 }
 
 void NSServer::on_done_task(int fd) {
-    Client *ptr;
-    {
-        std::lock_guard<std::mutex> lk(_connectionsMtx);
-        ptr = _connections[fd];
+    std::lock_guard<std::mutex> lk(_connectionsMtx);
+    auto it = _connections.find(fd);
+    if (it == _connections.end()) {
+        return;
     }
 
-    ptr->_countTask--;
-    if (ptr->_countTask == 0 && ptr->_eof) {
+    std::clog << __func__ << " " << fd << " " << it->second->_eof << " " << it->second->_countTask << '\n';
+
+    it->second->_countTask--;
+    if (it->second->_countTask <= 0 && it->second->_eof) {
         close(fd);
         _connections.erase(fd);
         std::clog << "XXX gCount " << gCount << '\n';
@@ -136,45 +164,40 @@ int NSServer::create_socket(int port) {
 
     return sock;
 }
-
+#include <array>
 void NSServer::on_read(int index) {
-    std::vector<uint8_t> buf;
-    buf.reserve(BUFSIZE);
+    std::array<uint8_t, BUFSIZE> buf;
     static bool needCompress = false;
     int curClient = _pollVec[index].fd;
 
-    auto resRecv = recv(curClient, buf.data(), BUFSIZE, MSG_DONTWAIT);
+    auto resRecv = recv(curClient, buf.data(), buf.size(), MSG_DONTWAIT);
     if (resRecv == -1) {
         std::clog << "Connection X disconnect case: " << std::strerror(errno) << '\n';
-//        _pollVec[index].fd = -1;
-//        --_activeConnections;
-//        close(curClient);
-//        needCompress = true;
     } else if (resRecv == 0) {
         std::clog << "Connection X WR close case: " << std::strerror(errno) << '\n';
-        _pollVec[index].fd = -1;
-        --_activeConnections;
         {
             std::lock_guard<std::mutex> lk(_connectionsMtx);
+            _connections[curClient]->_countTask++;
             _connections[curClient]->_eof = true;
         }
+        _pollVec[index].fd = -1;
+        --_activeConnections;
         needCompress = true;
+        on_done_task(curClient);
     } else {
         on_start_task(curClient);
-        NSThreadPool::Task t;
-        t.fd = curClient;
-        t.f = [buf, resRecv, curClient]() {
+        _pool.enqueue_task([this, buf, resRecv, curClient]() {
             //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
             for (int i = 0; i < resRecv; ++i) {
-                //std::clog << v[i];
+                buf[i];
             }
             using namespace std::chrono;
             // std::this_thread::sleep_for(10ms);
             // std::clog << '\n';
             gCount += resRecv;
             send(curClient, "ok\n", 3, MSG_DONTWAIT);
-        };
-        _pool.enqueue_task(std::move(t));
+            this->on_done_task(curClient);
+        });
     }
     if (needCompress) {
         std::sort(_pollVec.begin(), _pollVec.end(), [](pollfd &l, pollfd &r) {

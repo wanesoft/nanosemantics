@@ -30,7 +30,7 @@ public:
 
 private:
     struct Client {
-        uint64_t _countTask = 0;
+        int64_t _countTask = 0;
         uint64_t _id = 0;
         bool _eof = false;
     };
@@ -42,7 +42,7 @@ private:
     NSServerParams &_params;
     NSThreadPool _pool;
     std::vector<pollfd> _pollVec;
-    std::unordered_map<int, Client *> _connections;
+    std::unordered_map<int, ClientPtr> _connections;
     std::mutex _connectionsMtx;
     uint64_t _nextClietnId = 1000000ULL;
     int _general_sock = -1;

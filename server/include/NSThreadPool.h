@@ -15,20 +15,15 @@ class NSServer;
 
 class NSThreadPool {
 public:
-    struct Task {
-        std::function<void()> f;
-        int fd = -1;
-    };
-
+    using Task = std::function<void()>;
     NSThreadPool() = delete;
-    explicit NSThreadPool(int numsThread, NSServer *parent);
+    explicit NSThreadPool(int numsThread);
     ~NSThreadPool();
 
     void enqueue_task(Task &&task);
     void stop();
 
 private:
-
     struct {
         std::mutex mtx;
         std::queue<Task> work_queue;
@@ -36,7 +31,6 @@ private:
     } _state;
     std::vector<std::thread> _workers;
     std::condition_variable _cv;
-    NSServer *_parent;
 
     void worker_loop();
 };
