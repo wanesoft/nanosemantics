@@ -1,3 +1,3 @@
 # Nanosemantics test task
-Simple netword words counter
+Simple network words counter
 ```@todo: fill me```
