@@ -77,7 +77,14 @@ int NSClient::start() {
     write(1, result.data(), result.size());
     write(1, "\n", 1);
 
-    std::cerr << "i send " << gCheck << '\n';
+    uint64_t counter = 0;
+    for (auto cur : result) {
+        if (cur == ';') {
+            ++counter;
+        }
+    }
+
+    std::cerr << "I send " << gCheck << " bytes, found " << counter << "times" << '\n';
 
     return 0;
 }

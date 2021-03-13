@@ -7,10 +7,10 @@
 
 int main() {
     NSClientParams p{
-        .inputPath = "./pride_and_prejudice.txt",
+        .inputPath = "./t",
         .outputPath = "./2.txt",
         .serverAddress = "127.0.0.1",
-        .serverPort = "3129",
+        .serverPort = "3130",
         .bufSize = 1024
     };
 

@@ -33,7 +33,7 @@ public:
 private:
     struct Client {
         int64_t _countTask = 0;
-        uint64_t _id = 0;
+        uint64_t _readPos = 0;
         bool _eof = false;
     };
     using ClientPtr = std::unique_ptr<Client>;
@@ -46,7 +46,6 @@ private:
     std::vector<pollfd> _pollVec;
     std::unordered_map<int, ClientPtr> _connections;
     std::mutex _connectionsMtx;
-    uint64_t _nextClietnId = 1000000ULL;
     int _general_sock = -1;
     int _activeConnections;
     bool _run = true;

@@ -3,42 +3,14 @@
 //
 
 #include "NSServer.h"
-// todo del me
 #include <iostream>
 #include <unordered_map>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 
-
-// todo delete
-std::atomic<uint64_t> gCount{0};
-
-//static void logStrFormat(const char *fmt, ...) {
-//    static std::mutex gPrintMtx;
-//    std::lock_guard<std::mutex> lk(gPrintMtx);
-//    int r;
-//    std::string s;
-//    va_list va;
-//
-//    va_start(va, fmt);
-//    r = vsnprintf(NULL, 0, fmt, va);
-//    va_end(va);
-//    if (r < 0) {
-//        assert(0);
-//    }
-//    s.resize(r + 1);
-//
-//    va_start(va, fmt);
-//    r = vsnprintf(&s[0], s.capacity(), fmt, va);
-//    va_end(va);
-//    if (r < 0) {
-//        assert(0);
-//    }
-//    s.resize(r);
-//
-//    std::clog << s << '\n';
-//}
+const char *gNeedle;
+uint64_t gCheck = 0;
 
 NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {
     _pollVec.reserve(params.maxConnections);
@@ -54,6 +26,7 @@ NSServer::~NSServer() {
 }
 
 int NSServer::start() {
+    gNeedle = _params.wordForSearch.c_str();
     _general_sock = create_socket(_params.port);
     if (_general_sock < 0) {
         exit(EXIT_FAILURE);
@@ -77,13 +50,10 @@ int NSServer::start() {
                 if (_pollVec[i].fd == _general_sock) {
                     auto curClientFd = accept(_general_sock, nullptr, nullptr);
                     if (_activeConnections - 1 == _params.maxConnections) {
-                        std::clog << "Maximum connections\n";
                         close(curClientFd);
                     } else {
-                        std::clog << "New connection: " << curClientFd << "\n";
                         _pollVec[_activeConnections].fd = curClientFd;
                         auto *curClient = new Client;
-                        curClient->_id = _nextClietnId++;
                         {
                             std::lock_guard<std::mutex> lk(_connectionsMtx);
                             _connections.emplace(curClientFd, curClient);
@@ -99,11 +69,6 @@ int NSServer::start() {
                 }
             }
         }
-        // logStrFormat("Cycle, curFdsCount: %d and gCheck %d", _activeConnections, gCount.load());
-        for (int i = 0; i < 1024; ++i) {
-            //std::clog << pollArr[i].fd << ' ';
-        }
-        //std::clog << '\n';
     }
 
     return 0;
@@ -125,13 +90,11 @@ void NSServer::on_done_task(int fd) {
         return;
     }
 
-    //std::clog << __func__ << " " << fd << " " << it->second->_eof << " " << it->second->_countTask << '\n';
-
     it->second->_countTask--;
     if (it->second->_countTask <= 0 && it->second->_eof) {
         close(fd);
+        std::clog << gcher << '\n';
         _connections.erase(fd);
-        std::clog << "XXX gCount " << gCount << '\n';
     }
 }
 
@@ -165,7 +128,9 @@ int NSServer::create_socket(int port) {
     return sock;
 }
 #include <array>
+
 void NSServer::on_read(int index) {
+    // todo get size from params
     std::array<uint8_t, 4096> buf;
     // buf.resize(_params.bufSize);
     static bool needCompress = false;
@@ -174,13 +139,11 @@ void NSServer::on_read(int index) {
     errno = 0;
     auto resRecv = recv(curClient, buf.data(), 4096, MSG_DONTWAIT);
     if (resRecv == -1) {
-        std::clog << "Connection X disconnect case for: " << curClient << " " << std::strerror(errno) << '\n';
         assert(errno == EAGAIN);
     } else if (resRecv == 0) {
         if (errno == EAGAIN) {
             return;
         }
-        std::clog << "Connection X WR close case: for: " << curClient << " "  << std::strerror(errno) << '\n';
         {
             std::lock_guard<std::mutex> lk(_connectionsMtx);
             _connections[curClient]->_countTask++;
@@ -191,20 +154,29 @@ void NSServer::on_read(int index) {
         needCompress = true;
         on_done_task(curClient);
     } else {
-        if (resRecv != 4096) {
-            std::clog << "get " << resRecv << " from " << curClient << '\n';
-        }
-        gCount += resRecv;
         on_start_task(curClient);
-        _pool.enqueue_task([this, buf, resRecv, curClient]() {
-            //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
+        uint64_t curReadPos;
+        {
+            std::lock_guard<std::mutex> lk(_connectionsMtx);
+            auto &it = _connections[curClient];
+            curReadPos = it->_readPos;
+            it->_readPos += resRecv;
+        }
+        _pool.enqueue_task([this, buf, resRecv, curClient, curReadPos]() {
+            // todo part of word in another packets???
             for (int i = 0; i < resRecv; ++i) {
-                buf[i];
+                if (isspace(buf[i])) {
+                    ++i;
+                    auto res = strncmp((char *)&buf[i], gNeedle, strlen(gNeedle));
+                    if (res == 0 && buf[i + strlen(gNeedle)] == ' ') {
+                        gCheck++;
+                        auto ret = std::to_string(curReadPos + i);
+                        ret += ';';
+                        // todo fix for nonblocking
+                        send(curClient, ret.data(), ret.size(), 0);
+                    }
+                }
             }
-            using namespace std::chrono;
-            // std::this_thread::sleep_for(10ms);
-            // std::clog << '\n';
-            send(curClient, "ok\n", 3, MSG_DONTWAIT);
             this->on_done_task(curClient);
         });
     }
