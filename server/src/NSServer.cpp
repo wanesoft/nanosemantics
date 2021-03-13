@@ -3,118 +3,78 @@
 //
 
 #include "NSServer.h"
+// todo del me
 #include <iostream>
-#include <array>
+#include <unordered_map>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <poll.h>
 #include <unistd.h>
 
 
-NSServer::NSServer(int numsThread) : _pool(numsThread) {
+static constexpr int BUFSIZE = 1024;
 
+// todo delete
+std::atomic<int> gCount{0};
+
+NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads, this) {
+    _pollVec.reserve(params.maxConnections);
+    _activeConnections = 0;
+    for (int i = 0; i < _params.maxConnections; ++i) {
+        pollfd tmp{ .fd = -1, .events = POLLIN, .revents = 0 };
+        _pollVec.emplace_back(tmp);
+    }
 }
 
 NSServer::~NSServer() {
 
 }
-std::atomic<int> gCount{0};
-int NSServer::start(int port) {
-    _general_sock = create_socket(port);
+
+int NSServer::start() {
+    _general_sock = create_socket(_params.port);
     if (_general_sock < 0) {
         exit(EXIT_FAILURE);
     }
 
-    std::array<pollfd, 1024> pollArr;
-    std::for_each(pollArr.begin(), pollArr.end(), [](pollfd &cur) {
-       cur.fd = -1;
-       cur.events = POLLIN;
-    });
-
-    pollArr[0].fd = _general_sock;
-    int curFdsCount = 1;
-    bool needCompress = false;
+    _pollVec[0].fd = _general_sock;
+    ++_activeConnections;
 
     while (_run) {
-        auto pollcall = poll(pollArr.data(), curFdsCount, -1);
+        auto pollcall = poll(_pollVec.data(), _activeConnections, -1);
         if (pollcall < 0) {
             std::cerr << "Poll crash\n";
             exit(EXIT_FAILURE);
         } else if (pollcall == 0) {
             std::cerr << "Timeout\n";
         } else {
-            for (int i = 0; i < curFdsCount; ++i) {
-                if (pollArr[i].revents == 0) {
+            for (int i = 0; i < _activeConnections; ++i) {
+                if (_pollVec[i].revents == 0) {
                     continue;
                 }
-                if (pollArr[i].fd == _general_sock) {
-                    auto curClient = accept(_general_sock, nullptr, nullptr);
-                    if (curFdsCount - 1 == 1024) {
+                if (_pollVec[i].fd == _general_sock) {
+                    auto curClientFd = accept(_general_sock, nullptr, nullptr);
+                    if (_activeConnections - 1 == _params.maxConnections) {
                         std::clog << "Maximum connections\n";
-                        close(curClient);
+                        close(curClientFd);
                     } else {
-                        pollArr[curFdsCount].fd = curClient;
-                        ++curFdsCount;
-                        char buf[1024] = {0};
-                        auto resRecv = recv(curClient, buf, 1024, MSG_DONTWAIT);
-                        if (resRecv == -1) {
-                            std::clog << "Connection disconnect case: " << std::strerror(errno) << '\n';
-                        } else if (resRecv == 0) {
-                            std::clog << "Connection WR close case\n";
-                        } else {
-                            std::vector<uint8_t> v(buf, buf + resRecv);
-                            _pool.enqueue_task([v, curClient](){
-                                std::clog << '\n';
-                                for (unsigned long i = 0; i < v.size(); ++i) {
-                                    std::clog << v[i];
-                                }
-                                std::clog << '\n';
-                                gCount += v.size();
-                                send(curClient, "ok\n", 3, MSG_DONTWAIT);
-                            });
+                        _pollVec[_activeConnections].fd = curClientFd;
+                        auto *curClient = new Client;
+                        curClient->_id = _nextClietnId++;
+                        {
+                            std::lock_guard<std::mutex> lk(_connectionsMtx);
+                            _connections.emplace(curClientFd, curClient);
                         }
+                        on_read(_activeConnections);
+                        ++_activeConnections;
                     }
                 } else {
-                    if (pollArr[i].revents | POLLIN) {
-                        char buf[1024] = {0};
-                        auto curClient = pollArr[i].fd;
-                        pollArr[i].revents = 0;
-                        auto resRecv = recv(curClient, buf, 1024, MSG_DONTWAIT);
-                        if (resRecv == -1) {
-                            std::clog << "Connection X disconnect case: " << std::strerror(errno) << '\n';
-                        } else if (resRecv == 0) {
-                            needCompress = true;
-                            _pool.enqueue_task([curClient](){
-                                close(curClient);
-                            });
-                            pollArr[i].fd = -1;
-                            --curFdsCount;
-                            std::clog << "Connection X WR close case\n";
-                        } else {
-                            std::vector<uint8_t> v(buf, buf + resRecv);
-                            _pool.enqueue_task([v, curClient]() {
-                                //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
-                                for (unsigned long i = 0; i < v.size(); ++i) {
-                                    //std::clog << v[i];
-                                }
-                                using namespace std::chrono;
-                                std::this_thread::sleep_for(10ms);
-                                //std::clog << '\n';
-                                gCount += v.size();
-                                send(curClient, "ok\n", 3, MSG_DONTWAIT);
-                            });
-                        }
+                    if (_pollVec[i].revents | POLLIN) {
+                        _pollVec[i].revents = 0;
+                        on_read(i);
                     }
                 }
             }
         }
-        if (needCompress) {
-            std::sort(pollArr.begin(), pollArr.end(), [](pollfd &l, pollfd &r) {
-                return l.fd > r.fd;
-            });
-            needCompress = false;
-        }
-        std::clog << "Cycle, curFdsCount: " << curFdsCount << ", and gCheck " << gCount <<'\n';
+        std::clog << "Cycle, curFdsCount: " << _activeConnections << ", and gCheck " << gCount <<'\n';
         for (int i = 0; i < 1024; ++i) {
             //std::clog << pollArr[i].fd << ' ';
         }
@@ -126,6 +86,26 @@ int NSServer::start(int port) {
 
 void NSServer::stop() {
     _pool.stop();
+}
+
+void NSServer::on_start_task(int fd) {
+    std::lock_guard<std::mutex> lk(_connectionsMtx);
+    _connections[fd]->_countTask++;
+}
+
+void NSServer::on_done_task(int fd) {
+    Client *ptr;
+    {
+        std::lock_guard<std::mutex> lk(_connectionsMtx);
+        ptr = _connections[fd];
+    }
+
+    ptr->_countTask--;
+    if (ptr->_countTask == 0 && ptr->_eof) {
+        close(fd);
+        _connections.erase(fd);
+        std::clog << "XXX gCount " << gCount << '\n';
+    }
 }
 
 int NSServer::create_socket(int port) {
@@ -155,4 +135,51 @@ int NSServer::create_socket(int port) {
     }
 
     return sock;
+}
+
+void NSServer::on_read(int index) {
+    std::vector<uint8_t> buf;
+    buf.reserve(BUFSIZE);
+    static bool needCompress = false;
+    int curClient = _pollVec[index].fd;
+
+    auto resRecv = recv(curClient, buf.data(), BUFSIZE, MSG_DONTWAIT);
+    if (resRecv == -1) {
+        std::clog << "Connection X disconnect case: " << std::strerror(errno) << '\n';
+//        _pollVec[index].fd = -1;
+//        --_activeConnections;
+//        close(curClient);
+//        needCompress = true;
+    } else if (resRecv == 0) {
+        std::clog << "Connection X WR close case: " << std::strerror(errno) << '\n';
+        _pollVec[index].fd = -1;
+        --_activeConnections;
+        {
+            std::lock_guard<std::mutex> lk(_connectionsMtx);
+            _connections[curClient]->_eof = true;
+        }
+        needCompress = true;
+    } else {
+        on_start_task(curClient);
+        NSThreadPool::Task t;
+        t.fd = curClient;
+        t.f = [buf, resRecv, curClient]() {
+            //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
+            for (int i = 0; i < resRecv; ++i) {
+                //std::clog << v[i];
+            }
+            using namespace std::chrono;
+            // std::this_thread::sleep_for(10ms);
+            // std::clog << '\n';
+            gCount += resRecv;
+            send(curClient, "ok\n", 3, MSG_DONTWAIT);
+        };
+        _pool.enqueue_task(std::move(t));
+    }
+    if (needCompress) {
+        std::sort(_pollVec.begin(), _pollVec.end(), [](pollfd &l, pollfd &r) {
+            return l.fd > r.fd;
+        });
+        needCompress = false;
+    }
 }

@@ -6,8 +6,14 @@
 
 
 int main() {
-    NSServer s(4);
-    s.start(3129);
+    NSServerParams p{
+        .numThreads = 4,
+        .port = 3129,
+        .maxConnections = 1024,
+    };
+
+    NSServer s(p);
+    s.start();
 
     return 0;
 }

@@ -3,9 +3,10 @@
 //
 
 #include "NSThreadPool.h"
+#include "NSServer.h"
 
 
-NSThreadPool::NSThreadPool(int numsThread) {
+NSThreadPool::NSThreadPool(int numsThread, NSServer *parent) : _parent(parent) {
     _workers.reserve(numsThread);
     for (int i=0; i < numsThread; ++i) {
          _workers.emplace_back([this]() {
@@ -58,6 +59,7 @@ void NSThreadPool::worker_loop() {
         Task task = std::move(_state.work_queue.front());
         _state.work_queue.pop();
         lk.unlock();
-        task();
+        task.f();
+        _parent->on_done_task(task.fd);
     }
 }
