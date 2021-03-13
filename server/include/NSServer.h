@@ -12,6 +12,7 @@
 
 
 struct NSServerParams {
+    std::string wordForSearch;
     int numThreads;
     int port;
     int maxConnections;

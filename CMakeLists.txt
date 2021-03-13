@@ -13,6 +13,7 @@ add_subdirectory(client)
 add_executable(run_server server.cpp)
 target_link_libraries(run_server nsserver)
 target_include_directories(run_server PRIVATE server/include)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/server.conf ${CMAKE_CURRENT_BINARY_DIR}/server.conf COPYONLY)
 
 add_executable(run_client client.cpp)
 target_link_libraries(run_client nsclient)
