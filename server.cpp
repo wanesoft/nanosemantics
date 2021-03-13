@@ -24,14 +24,10 @@
             }                                                         \
         } while (0)
 
-static void badConfig(const char *str) {
-    std::cerr << "Bad config: " << str << '\n';
-    exit(EXIT_FAILURE);
-}
-
 int main(int ac, char **av) {
     if (ac < 2) {
         std::clog << "Using ./run_server [path_to_config] (usualy `server.conf`)\n";
+        exit(EXIT_FAILURE);
     }
 
     using namespace nlohmann;

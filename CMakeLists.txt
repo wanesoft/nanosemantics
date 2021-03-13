@@ -4,6 +4,9 @@ project(NSTask)
 set(CMAKE_C_STANDARD   03)
 set(CMAKE_CXX_STANDARD 14)
 
+add_compile_options("-fsanitize=address")
+link_libraries("-fsanitize=address")
+
 enable_testing()
 
 add_subdirectory(third-party/googletest)

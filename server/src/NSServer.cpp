@@ -93,7 +93,7 @@ void NSServer::on_done_task(int fd) {
     it->second->_countTask--;
     if (it->second->_countTask <= 0 && it->second->_eof) {
         close(fd);
-        std::clog << gcher << '\n';
+        // std::clog << gcher << '\n';
         _connections.erase(fd);
     }
 }

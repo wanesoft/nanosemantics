@@ -4,9 +4,6 @@ project(NSClient)
 set(CMAKE_C_STANDARD   03)
 set(CMAKE_CXX_STANDARD 14)
 
-add_compile_options("-fsanitize=address")
-link_libraries("-fsanitize=address")
-
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -Wall -Wextra -Werror")
 
