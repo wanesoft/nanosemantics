@@ -8,7 +8,12 @@ enable_testing()
 
 add_subdirectory(third-party/googletest)
 add_subdirectory(server)
+add_subdirectory(client)
 
 add_executable(run_server server.cpp)
 target_link_libraries(run_server nsserver)
 target_include_directories(run_server PRIVATE server/include)
+
+add_executable(run_client client.cpp)
+target_link_libraries(run_client nsclient)
+target_include_directories(run_client PRIVATE client/include)

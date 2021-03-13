@@ -2,11 +2,10 @@
 // Created by Ivan Marochkin on 12.03.2021.
 //
 
-#ifndef NSSERVER_NSTHREAD_H
-#define NSSERVER_NSTHREAD_H
+#ifndef NSTHREAD_H
+#define NSTHREAD_H
 
 #include <thread>
-#include <future>
 #include <vector>
 #include <queue>
 #include <mutex>
@@ -36,4 +35,4 @@ private:
 };
 
 
-#endif //NSSERVER_NSTHREAD_H
+#endif //NSTHREAD_H

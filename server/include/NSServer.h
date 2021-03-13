@@ -2,8 +2,8 @@
 // Created by Ivan Marochkin on 12.03.2021.
 //
 
-#ifndef NSSERVER_NSSERVER_H
-#define NSSERVER_NSSERVER_H
+#ifndef NSSERVER_H
+#define NSSERVER_H
 
 #include <NSThreadPool.h>
 #include <unordered_map>
@@ -15,6 +15,7 @@ struct NSServerParams {
     int numThreads;
     int port;
     int maxConnections;
+    int bufSize;
 };
 
 class NSServer {
@@ -51,4 +52,4 @@ private:
 };
 
 
-#endif //NSSERVER_NSSERVER_H
+#endif //NSSERVER_H

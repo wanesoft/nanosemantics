@@ -10,6 +10,7 @@ int main() {
         .numThreads = 4,
         .port = 3129,
         .maxConnections = 1024,
+        .bufSize = 4096
     };
 
     NSServer s(p);

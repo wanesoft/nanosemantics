@@ -11,36 +11,34 @@
 #include <unistd.h>
 
 
-static constexpr int BUFSIZE = 1024;
-
 // todo delete
-std::atomic<int> gCount{0};
-std::mutex gPrintMtx;
+std::atomic<uint64_t> gCount{0};
 
-static void logStrFormat(const char *fmt, ...) {
-    std::lock_guard<std::mutex> lk(gPrintMtx);
-    int r;
-    std::string s;
-    va_list va;
-
-    va_start(va, fmt);
-    r = vsnprintf(NULL, 0, fmt, va);
-    va_end(va);
-    if (r < 0) {
-        assert(0);
-    }
-    s.resize(r + 1);
-
-    va_start(va, fmt);
-    r = vsnprintf(&s[0], s.capacity(), fmt, va);
-    va_end(va);
-    if (r < 0) {
-        assert(0);
-    }
-    s.resize(r);
-
-    std::clog << s << '\n';
-}
+//static void logStrFormat(const char *fmt, ...) {
+//    static std::mutex gPrintMtx;
+//    std::lock_guard<std::mutex> lk(gPrintMtx);
+//    int r;
+//    std::string s;
+//    va_list va;
+//
+//    va_start(va, fmt);
+//    r = vsnprintf(NULL, 0, fmt, va);
+//    va_end(va);
+//    if (r < 0) {
+//        assert(0);
+//    }
+//    s.resize(r + 1);
+//
+//    va_start(va, fmt);
+//    r = vsnprintf(&s[0], s.capacity(), fmt, va);
+//    va_end(va);
+//    if (r < 0) {
+//        assert(0);
+//    }
+//    s.resize(r);
+//
+//    std::clog << s << '\n';
+//}
 
 NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {
     _pollVec.reserve(params.maxConnections);
@@ -82,6 +80,7 @@ int NSServer::start() {
                         std::clog << "Maximum connections\n";
                         close(curClientFd);
                     } else {
+                        std::clog << "New connection: " << curClientFd << "\n";
                         _pollVec[_activeConnections].fd = curClientFd;
                         auto *curClient = new Client;
                         curClient->_id = _nextClietnId++;
@@ -100,11 +99,11 @@ int NSServer::start() {
                 }
             }
         }
-        logStrFormat("Cycle, curFdsCount: %d and gCheck %d", _activeConnections, gCount.load());
+        // logStrFormat("Cycle, curFdsCount: %d and gCheck %d", _activeConnections, gCount.load());
         for (int i = 0; i < 1024; ++i) {
             //std::clog << pollArr[i].fd << ' ';
         }
-        std::clog << '\n';
+        //std::clog << '\n';
     }
 
     return 0;
@@ -126,7 +125,7 @@ void NSServer::on_done_task(int fd) {
         return;
     }
 
-    std::clog << __func__ << " " << fd << " " << it->second->_eof << " " << it->second->_countTask << '\n';
+    //std::clog << __func__ << " " << fd << " " << it->second->_eof << " " << it->second->_countTask << '\n';
 
     it->second->_countTask--;
     if (it->second->_countTask <= 0 && it->second->_eof) {
@@ -138,10 +137,6 @@ void NSServer::on_done_task(int fd) {
 
 int NSServer::create_socket(int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        std::cerr << "Failed to create socket\n";
-        return -1;
-    }
 
     struct sockaddr_in addr;
     socklen_t addrLen = sizeof(addr);
@@ -149,6 +144,11 @@ int NSServer::create_socket(int port) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port);
     addr.sin_family = AF_INET;
+
+    int enable = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+        std::cerr << "Failed to set socket as reusable\n";
+    }
 
     int resBind = bind(sock, (sockaddr *)&addr, addrLen);
     if (resBind < 0) {
@@ -166,15 +166,21 @@ int NSServer::create_socket(int port) {
 }
 #include <array>
 void NSServer::on_read(int index) {
-    std::array<uint8_t, BUFSIZE> buf;
+    std::array<uint8_t, 4096> buf;
+    // buf.resize(_params.bufSize);
     static bool needCompress = false;
     int curClient = _pollVec[index].fd;
 
-    auto resRecv = recv(curClient, buf.data(), buf.size(), MSG_DONTWAIT);
+    errno = 0;
+    auto resRecv = recv(curClient, buf.data(), 4096, MSG_DONTWAIT);
     if (resRecv == -1) {
-        std::clog << "Connection X disconnect case: " << std::strerror(errno) << '\n';
+        std::clog << "Connection X disconnect case for: " << curClient << " " << std::strerror(errno) << '\n';
+        assert(errno == EAGAIN);
     } else if (resRecv == 0) {
-        std::clog << "Connection X WR close case: " << std::strerror(errno) << '\n';
+        if (errno == EAGAIN) {
+            return;
+        }
+        std::clog << "Connection X WR close case: for: " << curClient << " "  << std::strerror(errno) << '\n';
         {
             std::lock_guard<std::mutex> lk(_connectionsMtx);
             _connections[curClient]->_countTask++;
@@ -185,6 +191,10 @@ void NSServer::on_read(int index) {
         needCompress = true;
         on_done_task(curClient);
     } else {
+        if (resRecv != 4096) {
+            std::clog << "get " << resRecv << " from " << curClient << '\n';
+        }
+        gCount += resRecv;
         on_start_task(curClient);
         _pool.enqueue_task([this, buf, resRecv, curClient]() {
             //std::clog << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ' ';
@@ -194,7 +204,6 @@ void NSServer::on_read(int index) {
             using namespace std::chrono;
             // std::this_thread::sleep_for(10ms);
             // std::clog << '\n';
-            gCount += resRecv;
             send(curClient, "ok\n", 3, MSG_DONTWAIT);
             this->on_done_task(curClient);
         });
