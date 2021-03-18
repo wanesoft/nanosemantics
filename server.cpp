@@ -24,6 +24,7 @@
             }                                                         \
         } while (0)
 
+
 int main(int ac, char **av) {
     if (ac < 2) {
         std::clog << "Using ./run_server [path_to_config] (usualy `server.conf`)\n";
@@ -40,11 +41,9 @@ int main(int ac, char **av) {
 
     NSServerParams p;
 
-    std::array<std::string, 5> arr{
-        "wordForSearch", "numThreads", "port", "maxConnections", "bufSize"
-    };
+    std::vector<std::string> v = jsonConf.at("wordsForSearch");
+    p.wordsForSearch = v;
 
-    INIT_STR_FROM_CONFIG(p.wordForSearch, jsonConf, "wordForSearch");
     INIT_FROM_CONFIG(p.numThreads, jsonConf, "numThreads");
     INIT_FROM_CONFIG(p.port, jsonConf, "port");
     INIT_FROM_CONFIG(p.maxConnections, jsonConf, "maxConnections");

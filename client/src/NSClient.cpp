@@ -84,7 +84,7 @@ int NSClient::start() {
         }
     }
 
-    std::cerr << "I send " << gCheck << " bytes, found " << counter << "times" << '\n';
+    std::cerr << "I send " << gCheck << " bytes, found " << counter << " items" << '\n';
 
     return 0;
 }

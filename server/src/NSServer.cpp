@@ -9,7 +9,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-const char *gNeedle;
 uint64_t gCheck = 0;
 
 NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {
@@ -26,7 +25,6 @@ NSServer::~NSServer() {
 }
 
 int NSServer::start() {
-    gNeedle = _params.wordForSearch.c_str();
     _general_sock = create_socket(_params.port);
     if (_general_sock < 0) {
         exit(EXIT_FAILURE);
@@ -131,13 +129,13 @@ int NSServer::create_socket(int port) {
 
 void NSServer::on_read(int index) {
     // todo get size from params
-    std::array<uint8_t, 4096> buf;
-    // buf.resize(_params.bufSize);
+    std::vector<uint8_t> buf;
+    buf.resize(_params.bufSize + 1);
     static bool needCompress = false;
     int curClient = _pollVec[index].fd;
 
     errno = 0;
-    auto resRecv = recv(curClient, buf.data(), 4096, MSG_DONTWAIT);
+    auto resRecv = recv(curClient, buf.data(), _params.bufSize, MSG_DONTWAIT);
     if (resRecv == -1) {
         assert(errno == EAGAIN);
     } else if (resRecv == 0) {
@@ -155,25 +153,48 @@ void NSServer::on_read(int index) {
         on_done_task(curClient);
     } else {
         on_start_task(curClient);
-        uint64_t curReadPos;
+        uint64_t curMaxReadPos;
         {
             std::lock_guard<std::mutex> lk(_connectionsMtx);
             auto &it = _connections[curClient];
-            curReadPos = it->_readPos;
-            it->_readPos += resRecv;
+            if (!it->prevPacket.empty()) {
+                // increase readable size
+                resRecv += it->prevPacket.size();
+                // increase current max read position
+                it->_readPos += resRecv;
+                // but decrease it cuz we have old word
+                it->_readPos -= it->prevPacket.size();
+                it->prevPacket.reserve(it->prevPacket.size() + _params.bufSize);
+                std::copy(buf.begin(), buf.end(), std::back_inserter(it->prevPacket));
+                // todo use pointers for cancel deep copying
+                buf.swap(it->prevPacket);
+            } else {
+                it->_readPos += resRecv;
+            }
+            curMaxReadPos = it->_readPos;
+            // it->prevPacket = get_last_word(buf);
         }
-        _pool.enqueue_task([this, buf, resRecv, curClient, curReadPos]() {
-            // todo part of word in another packets???
+        auto &ref = _params.wordsForSearch;
+        buf[resRecv] = '\0';
+        _pool.enqueue_task([this, buf, resRecv, curClient, curMaxReadPos, ref]() {
             for (int i = 0; i < resRecv; ++i) {
-                if (isspace(buf[i])) {
-                    ++i;
-                    auto res = strncmp((char *)&buf[i], gNeedle, strlen(gNeedle));
-                    if (res == 0 && buf[i + strlen(gNeedle)] == ' ') {
-                        gCheck++;
-                        auto ret = std::to_string(curReadPos + i);
-                        ret += ';';
-                        // todo fix for nonblocking
-                        send(curClient, ret.data(), ret.size(), 0);
+                if (isspace(buf[i]) || i == 0) {
+                    if (i != 0) {
+                        ++i;
+                    }
+                    for (auto &cur : ref) {
+                        auto res = strncmp((char *)&buf[i], cur.data(), cur.size());
+                        if (res == 0 && (buf[i + cur.size()] == ' '
+                                      || buf[i + cur.size()] == '\0'
+                                      || buf[i + cur.size()] == '\n')) { // here is just for safety
+                            gCheck++;
+                            std::string ret = cur;
+                            ret += ',';
+                            ret += std::to_string(curMaxReadPos - resRecv + i);
+                            ret += ';';
+                            // todo fix for nonblocking
+                            send(curClient, ret.data(), ret.size(), 0);
+                        }
                     }
                 }
             }
@@ -186,4 +207,28 @@ void NSServer::on_read(int index) {
         });
         needCompress = false;
     }
+}
+
+std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector) {
+    if (vector.empty()) {
+        return {};
+    }
+
+    auto counter = 0;
+    for (auto it = --vector.end(); it != vector.begin(); --it) {
+        if (*it == ' ') {
+            break;
+        }
+        ++counter;
+    }
+
+    std::vector<uint8_t> ret(0, counter);
+    for (auto it = --vector.end(); it != vector.begin(); --it) {
+        if (*it == ' ') {
+            break;
+        }
+        ret.emplace_back(*it);
+    }
+
+    return ret;
 }

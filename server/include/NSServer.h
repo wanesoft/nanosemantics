@@ -9,10 +9,11 @@
 #include <unordered_map>
 #include <memory>
 #include <poll.h>
+#include <vector>
 
 
 struct NSServerParams {
-    std::string wordForSearch;
+    std::vector<std::string> wordsForSearch;
     int numThreads;
     int port;
     int maxConnections;
@@ -32,6 +33,7 @@ public:
 
 private:
     struct Client {
+        std::vector<uint8_t> prevPacket;
         int64_t _countTask = 0;
         uint64_t _readPos = 0;
         bool _eof = false;
@@ -40,6 +42,7 @@ private:
 
     int create_socket(int port);
     void on_read(int index);
+    std::vector<uint8_t> get_last_word(std::vector<uint8_t> &vector);
 
     NSServerParams &_params;
     NSThreadPool _pool;
