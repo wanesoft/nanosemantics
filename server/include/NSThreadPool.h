@@ -9,6 +9,10 @@
 #include <vector>
 #include <queue>
 #include <mutex>
+#include <functional>
+#include <atomic>
+#include <condition_variable>
+
 
 class NSServer;
 

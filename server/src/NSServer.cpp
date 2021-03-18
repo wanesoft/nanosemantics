@@ -5,9 +5,13 @@
 #include "NSServer.h"
 #include <iostream>
 #include <unordered_map>
+#include <cstring>
+#include <cassert>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <string.h>
+#include <algorithm>
 
 
 NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {

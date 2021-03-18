@@ -10,6 +10,7 @@
 #include <memory>
 #include <poll.h>
 #include <vector>
+#include <functional>
 
 
 struct NSServerParams {

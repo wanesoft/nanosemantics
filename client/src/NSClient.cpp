@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <cstring>
+#include "string.h"
 
 
 NSClient::NSClient(NSClientParams &params) : _params(params) {
