@@ -33,7 +33,7 @@ public:
 
 private:
     struct Client {
-        std::vector<uint8_t> prevPacket;
+        std::vector<uint8_t> *prevPacket = nullptr;
         int64_t _countTask = 0;
         uint64_t _readPos = 0;
         bool _eof = false;
@@ -42,7 +42,7 @@ private:
 
     int create_socket(int port);
     void on_read(int index);
-    std::vector<uint8_t> get_last_word(std::vector<uint8_t> &vector);
+    std::vector<uint8_t> get_last_word(std::vector<uint8_t> &vector, int resRecv);
 
     NSServerParams &_params;
     NSThreadPool _pool;

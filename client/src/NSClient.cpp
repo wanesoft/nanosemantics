@@ -50,14 +50,15 @@ int NSClient::start() {
         } else if (readRes == 0) {
             shutdown(_generalSocket, SHUT_WR);
             close(readFd);
-            // assert(0);
         } else {
+            // todo make nonblocking with timer
             int resSend = send(_generalSocket, buf, readRes, MSG_DONTWAIT);
             gCheck += resSend;
             if (resSend < 0) {
                 std::cerr << "Error while sending: " << strerror(errno) << '\n';
             }
         }
+        // todo make nonblocking with timer
         int resRecv = recv(_generalSocket, recvBuf, _params.bufSize, MSG_DONTWAIT);
         if (resRecv < 0) {
             if (errno == EAGAIN) {
@@ -65,17 +66,24 @@ int NSClient::start() {
             } else {
                 run = false;
             }
-            // std::cerr << "Error while receiving: " << strerror(errno) << '\n';
         } else if (resRecv == 0) {
             run = false;
         } else {
             result.reserve(resRecv + result.size());
             std::copy(recvBuf, recvBuf + resRecv, std::back_inserter(result));
+            std::cerr << std::string(recvBuf, resRecv);
         }
     }
 
-    write(1, result.data(), result.size());
-    write(1, "\n", 1);
+//     write(1, result.data(), result.size());
+//     write(1, "\n", 1);
+
+//    for (auto cur : result) {
+//        std::cerr << cur;
+//        if (cur == ';') {
+//            std::cerr << '\n';
+//        }
+//    }
 
     uint64_t counter = 0;
     for (auto cur : result) {

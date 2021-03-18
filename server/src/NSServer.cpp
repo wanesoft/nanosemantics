@@ -9,7 +9,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-uint64_t gCheck = 0;
 
 NSServer::NSServer(NSServerParams &params) : _params(params), _pool(params.numThreads) {
     _pollVec.reserve(params.maxConnections);
@@ -52,6 +51,7 @@ int NSServer::start() {
                     } else {
                         _pollVec[_activeConnections].fd = curClientFd;
                         auto *curClient = new Client;
+                        curClient->prevPacket = new std::vector<uint8_t>;
                         {
                             std::lock_guard<std::mutex> lk(_connectionsMtx);
                             _connections.emplace(curClientFd, curClient);
@@ -91,7 +91,8 @@ void NSServer::on_done_task(int fd) {
     it->second->_countTask--;
     if (it->second->_countTask <= 0 && it->second->_eof) {
         close(fd);
-        // std::clog << gcher << '\n';
+        auto &cur = _connections[fd];
+        delete cur->prevPacket;
         _connections.erase(fd);
     }
 }
@@ -125,19 +126,18 @@ int NSServer::create_socket(int port) {
 
     return sock;
 }
-#include <array>
 
 void NSServer::on_read(int index) {
-    // todo get size from params
-    std::vector<uint8_t> buf;
-    buf.resize(_params.bufSize + 1);
+    auto buf = new std::vector<uint8_t>;
+    buf->resize(_params.bufSize + 1);
     static bool needCompress = false;
     int curClient = _pollVec[index].fd;
 
     errno = 0;
-    auto resRecv = recv(curClient, buf.data(), _params.bufSize, MSG_DONTWAIT);
+    auto resRecv = recv(curClient, buf->data(), _params.bufSize, MSG_DONTWAIT);
     if (resRecv == -1) {
         assert(errno == EAGAIN);
+        return;
     } else if (resRecv == 0) {
         if (errno == EAGAIN) {
             return;
@@ -157,37 +157,46 @@ void NSServer::on_read(int index) {
         {
             std::lock_guard<std::mutex> lk(_connectionsMtx);
             auto &it = _connections[curClient];
-            if (!it->prevPacket.empty()) {
+            if (!it->prevPacket->empty()) {
                 // increase readable size
-                resRecv += it->prevPacket.size();
+                resRecv += it->prevPacket->size();
                 // increase current max read position
                 it->_readPos += resRecv;
                 // but decrease it cuz we have old word
-                it->_readPos -= it->prevPacket.size();
-                it->prevPacket.reserve(it->prevPacket.size() + _params.bufSize);
-                std::copy(buf.begin(), buf.end(), std::back_inserter(it->prevPacket));
+                it->_readPos -= it->prevPacket->size();
+                it->prevPacket->reserve(it->prevPacket->size() + _params.bufSize);
+                std::copy(buf->begin(), buf->end(), std::back_inserter(*it->prevPacket));
                 // todo use pointers for cancel deep copying
-                buf.swap(it->prevPacket);
+                std::swap(buf, it->prevPacket);
             } else {
                 it->_readPos += resRecv;
             }
             curMaxReadPos = it->_readPos;
-            // it->prevPacket = get_last_word(buf);
+            *it->prevPacket = get_last_word(*buf, resRecv);
         }
         auto &ref = _params.wordsForSearch;
-        buf[resRecv] = '\0';
+        (*buf)[resRecv] = '\0';
         _pool.enqueue_task([this, buf, resRecv, curClient, curMaxReadPos, ref]() {
+
+            // описание алгоритма:
+            // в настоящий момент сложность O(N + M * k)
+            // где N - это размер входящего потока
+            // M - длина одного искомого слова
+            // и k - их количество
+            // так как M и k известны на стадии запуска - они являются константами
+            // и мы можем ими пренебречь. итого сложность: O(N)
+
             for (int i = 0; i < resRecv; ++i) {
-                if (isspace(buf[i]) || i == 0) {
-                    if (i != 0) {
+                if (isspace((*buf)[i]) || i == 0) {
+                    if (i != 0 || isspace((*buf)[i])) {
                         ++i;
                     }
+                    // todo find min word's size for optimize `i` position
                     for (auto &cur : ref) {
-                        auto res = strncmp((char *)&buf[i], cur.data(), cur.size());
-                        if (res == 0 && (buf[i + cur.size()] == ' '
-                                      || buf[i + cur.size()] == '\0'
-                                      || buf[i + cur.size()] == '\n')) { // here is just for safety
-                            gCheck++;
+                        auto res = strncmp((char *)&(*buf)[i], cur.data(), cur.size());
+                        if (res == 0 && ((*buf)[i + cur.size()] == ' '
+                                      || (*buf)[i + cur.size()] == '\0'
+                                      || (*buf)[i + cur.size()] == '\n')) { // here is just for safety
                             std::string ret = cur;
                             ret += ',';
                             ret += std::to_string(curMaxReadPos - resRecv + i);
@@ -199,6 +208,7 @@ void NSServer::on_read(int index) {
                 }
             }
             this->on_done_task(curClient);
+            delete buf;
         });
     }
     if (needCompress) {
@@ -209,26 +219,33 @@ void NSServer::on_read(int index) {
     }
 }
 
-std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector) {
+std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector, int resRecv) {
     if (vector.empty()) {
         return {};
     }
 
     auto counter = 0;
-    for (auto it = --vector.end(); it != vector.begin(); --it) {
+    auto it = (vector.begin() + resRecv - 1);
+    for ( ; it != vector.begin(); --it) {
         if (*it == ' ') {
             break;
         }
         ++counter;
     }
 
+    if (counter == 0) {
+        return {};
+    }
+
     std::vector<uint8_t> ret(0, counter);
-    for (auto it = --vector.end(); it != vector.begin(); --it) {
+    it = (vector.begin() + resRecv - 1);
+    for ( ; it != vector.begin(); --it) {
         if (*it == ' ') {
             break;
         }
         ret.emplace_back(*it);
     }
 
+    std::reverse(ret.begin(), ret.end());
     return ret;
 }

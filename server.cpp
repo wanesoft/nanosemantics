@@ -49,6 +49,8 @@ int main(int ac, char **av) {
     INIT_FROM_CONFIG(p.maxConnections, jsonConf, "maxConnections");
     INIT_FROM_CONFIG(p.bufSize, jsonConf, "bufSize");
 
+    // todo add signal handler
+
     NSServer s(p);
     s.start();
 
