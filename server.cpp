@@ -33,7 +33,58 @@ void signal_handler(int signal) {
     gP->stop();
 }
 
+
+std::vector<uint8_t> get_last_word(std::vector<uint8_t> &vector, int resRecv) {
+    if (vector.empty()) {
+        return {};
+    }
+
+    auto counter = 0;
+    auto it = (vector.begin() + resRecv - 2);
+    for ( ; it != vector.begin() - 1; --it) {
+        if (*it == ' ') {
+            break;
+        }
+        ++counter;
+    }
+
+    if (counter == 0) {
+        return {};
+    }
+
+    std::vector<uint8_t> ret(0, counter);
+    it = (vector.begin() + resRecv - 2);
+    for ( ; it != vector.begin() - 1; --it) {
+        if (*it == ' ') {
+            break;
+        }
+        if (*it == 0) {
+            assert(0);
+        }
+        ret.emplace_back(*it);
+    }
+
+    std::reverse(ret.begin(), ret.end());
+    return ret;
+}
+
+void printVec(std::vector<uint8_t> &vector) {
+    for (auto &cur : vector) {
+        std::clog << (char)cur;
+    }
+    std::clog << '\n';
+}
+
 int main(int ac, char **av) {
+
+//    uint8_t buf[] = "chapter 1 chapter 2 c hapter 3 chapter 4 chapter 5 chapter 6 chapter 7 chapter 8 chapter 9 chapter 10 chapter 11 chapter 12 chapt";
+//    std::vector<uint8_t> v(buf, buf + sizeof(buf));
+//
+//    auto res = get_last_word(v, v.size());
+//    printVec(res);
+//
+//    return 0;
+
     if (ac < 2) {
         std::clog << "Using ./run_server [path_to_config] (usualy `server.conf`)\n";
         exit(EXIT_FAILURE);

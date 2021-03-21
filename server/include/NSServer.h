@@ -32,6 +32,9 @@ public:
     void on_start_task(int fd);
     void on_done_task(int id);
 
+protected:
+    NSServerParams &_params;
+
 private:
     struct Client {
         std::vector<uint8_t> *prevPacket = nullptr;
@@ -45,7 +48,6 @@ private:
     void on_read(int index);
     std::vector<uint8_t> get_last_word(std::vector<uint8_t> &vector, int resRecv);
 
-    NSServerParams &_params;
     NSThreadPool _pool;
     std::vector<pollfd> _pollVec;
     std::unordered_map<int, ClientPtr> _connections;

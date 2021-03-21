@@ -171,7 +171,7 @@ void NSServer::on_read(int index) {
                 it->_readPos += resRecv;
                 // but decrease it cuz we have old word
                 it->_readPos -= it->prevPacket->size();
-                it->prevPacket->reserve(it->prevPacket->size() + _params.bufSize);
+                it->prevPacket->reserve(it->prevPacket->size() + resRecv);
                 std::copy(buf->begin(), buf->end(), std::back_inserter(*it->prevPacket));
                 // todo use pointers for cancel deep copying
                 std::swap(buf, it->prevPacket);
@@ -179,10 +179,10 @@ void NSServer::on_read(int index) {
                 it->_readPos += resRecv;
             }
             curMaxReadPos = it->_readPos;
-            *it->prevPacket = get_last_word(*buf, resRecv);
+            *it->prevPacket = get_last_word(*buf, buf->size());
         }
         auto &ref = _params.wordsForSearch;
-        (*buf)[resRecv] = '\0';
+        (*buf)[resRecv] = '\1';
         _pool.enqueue_task([this, buf, resRecv, curClient, curMaxReadPos, ref]() {
 
             // описание алгоритма:
@@ -232,8 +232,8 @@ std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector, int r
     }
 
     auto counter = 0;
-    auto it = (vector.begin() + resRecv - 1);
-    for ( ; it != vector.begin(); --it) {
+    auto it = (vector.begin() + resRecv - 2);
+    for ( ; it != vector.begin() - 1; --it) {
         if (*it == ' ') {
             break;
         }
@@ -245,13 +245,10 @@ std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector, int r
     }
 
     std::vector<uint8_t> ret(0, counter);
-    it = (vector.begin() + resRecv - 1);
-    for ( ; it != vector.begin(); --it) {
+    it = (vector.begin() + resRecv - 2);
+    for ( ; it != vector.begin() - 1; --it) {
         if (*it == ' ') {
             break;
-        }
-        if (*it == 0) {
-            assert(0);
         }
         ret.emplace_back(*it);
     }
