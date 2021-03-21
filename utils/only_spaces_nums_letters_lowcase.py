@@ -2,8 +2,10 @@
 
 import sys, getopt, re
 
+
 def printHelp():
     print './only_spaces_nums_letters_lowcase.py -i <inputfile> -o <outputfile>'
+
 
 def run(inputfile, outputfile):
     print 'Input file is "', inputfile, '"'
@@ -32,12 +34,13 @@ def run(inputfile, outputfile):
     wFd.close()
     print('Done')
 
+
 def main(argv):
     inputfile = ''
     outputfile = ''
     check = 0
     try:
-        opts, args = getopt.getopt(argv,"hi:o:",["ifile=","ofile="])
+        opts, args = getopt.getopt(argv, "hi:o:", ["ifile=", "ofile="])
     except getopt.GetoptError:
         printHelp()
         sys.exit(2)
@@ -56,5 +59,6 @@ def main(argv):
     else:
         printHelp()
 
+
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main(sys.argv[1:])

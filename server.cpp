@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <csignal>
 #include <NSServer.h>
 #include "json.hpp"
 
@@ -24,6 +25,13 @@
             }                                                         \
         } while (0)
 
+NSServer *gP = nullptr;
+
+void signal_handler(int signal) {
+    (void)signal;
+    std::clog << "Signal " << signal << " call\n";
+    gP->stop();
+}
 
 int main(int ac, char **av) {
     if (ac < 2) {
@@ -49,9 +57,10 @@ int main(int ac, char **av) {
     INIT_FROM_CONFIG(p.maxConnections, jsonConf, "maxConnections");
     INIT_FROM_CONFIG(p.bufSize, jsonConf, "bufSize");
 
-    // todo add signal handler
+    signal(SIGINT, signal_handler);
 
     NSServer s(p);
+    gP = &s;
     s.start();
 
     return 0;

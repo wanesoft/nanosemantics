@@ -11,3 +11,8 @@ add_executable(test_NSThreadPool EXCLUDE_FROM_ALL test_NSThreadPool.cpp)
 target_link_libraries(test_NSThreadPool nsserver gtest_main)
 add_test(NSThreadPool test_NSThreadPool)
 add_dependencies(tests test_NSThreadPool)
+
+add_executable(test_NSServer EXCLUDE_FROM_ALL test_NSServer.cpp)
+target_link_libraries(test_NSServer nsserver gtest_main)
+add_test(NSServer test_NSServer)
+add_dependencies(tests test_NSServer)

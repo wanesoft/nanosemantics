@@ -77,7 +77,10 @@ int NSServer::start() {
 }
 
 void NSServer::stop() {
+    _run = false;
     _pool.stop();
+    close(_general_sock);
+    _general_sock = -1;
 }
 
 void NSServer::on_start_task(int fd) {
@@ -246,6 +249,9 @@ std::vector<uint8_t> NSServer::get_last_word(std::vector<uint8_t> &vector, int r
     for ( ; it != vector.begin(); --it) {
         if (*it == ' ') {
             break;
+        }
+        if (*it == 0) {
+            assert(0);
         }
         ret.emplace_back(*it);
     }
